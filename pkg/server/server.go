@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/go-redis/redis/v8"
+	"log"
 	"net"
 )
 
@@ -19,6 +20,7 @@ func (s *Server) Run() error {
 	}
 	chat := NewChat(s)
 
+	log.Println("server listening on ", s.UDPAddr)
 	chat.Listen()
 	return nil
 }
