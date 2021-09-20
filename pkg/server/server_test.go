@@ -63,6 +63,7 @@ func TestNetServer_Request(t *testing.T) {
 	}
 
 	var initialPayload *InitialPayload
+	var receivedMessage Message
 
 	t.Run("Sending first connect with username returns assignedID and history length", func(t *testing.T) {
 		initialPayload = AddTestClient(t, conn, clientLoginInput)
@@ -90,7 +91,6 @@ func TestNetServer_Request(t *testing.T) {
 		}
 		command, data := utils.ParseCommandAndData(bytes)
 		assert.Equal(t, utils.AddMessageCommand, command)
-		var receivedMessage Message
 		UnpackTestData(t, data, &receivedMessage)
 		assert.NotEmpty(t, receivedMessage.ID)
 		assert.Equal(t, initialPayload.AssignedId, receivedMessage.AuthorID)
@@ -131,6 +131,7 @@ func TestNetServer_Request(t *testing.T) {
 		UnpackTestData(t, data, &historyLog)
 		assert.Equal(t, 0, historyLog.Order)
 	})
+
 }
 
 func CreateTestConnection(t *testing.T, address string) *net.UDPConn {

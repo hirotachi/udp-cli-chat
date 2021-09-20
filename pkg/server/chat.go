@@ -58,14 +58,16 @@ func (chat *Chat) HandleUDPConnection() {
 		return
 	}
 	command, data := utils.ParseCommandAndData(bytes)
-	switch command {
-	case utils.ConnectCommand:
-		chat.Join(addr, data)
-	case utils.AddMessageCommand:
-		chat.AddMessage(data, addr)
-	default:
-		log.Printf("unknown command \"%s\" from address: %s\n", command, addr)
-	}
+	go func() {
+		switch command {
+		case utils.ConnectCommand:
+			chat.Join(addr, data)
+		case utils.AddMessageCommand:
+			chat.AddMessage(data, addr)
+		default:
+			log.Printf("unknown command \"%s\" from address: %s\n", command, addr)
+		}
+	}()
 }
 
 func (chat *Chat) Join(addr *net.UDPAddr, data []byte) {
