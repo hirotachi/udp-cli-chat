@@ -86,6 +86,7 @@ func (c *Connection) HandleUDPMessage(msg []byte) {
 			c.LogError(fmt.Errorf("unrecognized command from UDP connection: \"%s\"", command))
 		}
 	}
+
 }
 
 func (c *Connection) RegisterClient(username string) {
@@ -123,6 +124,7 @@ func (c *Connection) HandleInitialPayload(data []byte) {
 		return
 	}
 
+	c.AssignID = initialPayload.AssignedId
 	if initialPayload.HistoryLength == 0 {
 		c.isHistoryLoaded = true
 		c.LogError(fmt.Errorf("history is loaded succefuly"))

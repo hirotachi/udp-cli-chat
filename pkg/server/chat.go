@@ -185,10 +185,11 @@ func (chat *Chat) ListenToChannels() {
 			})
 		case msg := <-chat.MessageChan:
 			forEachClient(true, func(client *Client) {
-				if client.ID != msg.AuthorID { // hide other clients ids from client
-					msg.AuthorID = ""
+				message := msg
+				if client.ID != message.AuthorID { // hide other clients ids from client
+					message.AuthorID = ""
 				}
-				client.MessageChan <- &msg
+				client.MessageChan <- &message
 			})
 		}
 	}

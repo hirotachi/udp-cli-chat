@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/hirotachi/udp-cli-chat/pkg/server"
+	"github.com/hirotachi/udp-cli-chat/pkg/utils"
 	"github.com/rivo/tview"
 )
 
@@ -51,7 +52,7 @@ func (board *MessageBoard) ListenToMessages() {
 			return
 		}
 		board.Store = append(board.Store, &message)
-		formattedMessage := GenerateMessageLog(&message)
+		formattedMessage := board.GenerateMessageLog(&message)
 		board.StreamToMessageView(formattedMessage...)
 	}
 }
@@ -65,16 +66,41 @@ func (board *MessageBoard) StreamToMessageView(data ...interface{}) {
 // ListenToConnectionLog log errors and announcements to message board
 func (board *MessageBoard) ListenToConnectionLog() {
 	for log := range board.Connection.LogChan {
-		board.StreamToMessageView("[red]error[::-]: ", log)
+		board.StreamToMessageView("[red]error[::-]: ", log, "\n\n")
 	}
 }
 
-func GenerateMessageLog(message *server.Message) []interface{} {
+func (board *MessageBoard) HandleInput(text string) {
+	switch text {
+	case "/help":
+		board.ListCommands()
+	default:
+		message := &server.Message{
+			Content:  text,
+			AuthorID: board.Connection.AssignID,
+		}
+		if err := utils.WriteToUDPConn(board.Connection.conn, utils.AddMessageCommand, message); err != nil {
+			return
+		}
+	}
+}
+
+func (board *MessageBoard) ListCommands() {
+	// todo: add more commands
+	commands := `[lightgrey::b]Commands[::-]
+	[grey]/[::-][white::b]help[::-] [lightgrey]Shows this commands list.[::-]
+	`
+	if _, err := fmt.Fprint(board.View, commands, "\n"); err != nil {
+		board.Connection.LogError(fmt.Errorf("failed to list commands: %s", err))
+	}
+}
+
+func (board *MessageBoard) GenerateMessageLog(message *server.Message) []interface{} {
 	date := message.CreatedAt.Format("Jan 2 15:04:05")
 	date = fmt.Sprintf("[grey]%s[::-]", date)
 
 	authorName := message.AuthorName
-	if message.AuthorID != "" {
+	if message.AuthorID == board.Connection.AssignID {
 		authorName = fmt.Sprintf("[blue::b]%s[::-]", authorName)
 	}
 	return []interface{}{authorName, " ", date, "\n", "  [white]", message.Content, "\n\n"}
