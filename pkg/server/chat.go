@@ -161,6 +161,25 @@ func (chat *Chat) SendInitialPayload(client *Client) {
 		HistoryLength: len(chat.History),
 	}
 	utils.BroadcastWithCommand(client.BroadcastChan, utils.InitialPayloadCommand, initialPayload)
+
+	// send each history log by itself to avoid data loss
+	for i, message := range chat.History {
+		m := *message // copy to avoid mutating message in history
+		authorName := "guest"
+		author, ok := chat.Clients[m.AuthorID]
+		if ok {
+			authorName = author.Name
+		}
+		m.AuthorName = authorName // author name to message to be identified by other clients
+		if m.AuthorID != client.ID {
+			m.AuthorID = ""
+		}
+		historyLog := &HistoryLog{
+			Order:   i,
+			Message: &m,
+		}
+		utils.BroadcastWithCommand(client.BroadcastChan, utils.AddHistoryCommand, historyLog)
+	}
 }
 
 func (chat *Chat) AddMessage(data []byte, addr *net.UDPAddr) {

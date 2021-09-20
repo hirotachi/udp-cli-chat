@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/alicebob/miniredis"
 	"github.com/go-redis/redis/v8"
 	"github.com/hirotachi/udp-cli-chat/pkg/utils"
@@ -105,16 +106,30 @@ func TestNetServer_Request(t *testing.T) {
 		assert.Equal(t, int64(1), historyLength)
 	})
 
+	var secondConHistory int
 	t.Run("Sending another connect with new client receives  initialPayload with history length", func(t *testing.T) {
 		secondConInitialPayload := AddTestClient(t, secondConn, secondClientLoginInput)
 		assert.NotEmpty(t, secondConInitialPayload.AssignedId)
 		assert.Equal(t, 1, secondConInitialPayload.HistoryLength)
+		secondConHistory = secondConInitialPayload.HistoryLength
 
 		clientLength, err := server.RedisClient.SCard(ctx, utils.RedisClientsSetKey).Result()
 		if err != nil {
 			t.Error("failed to fetch clients set length from redis")
 		}
 		assert.Equal(t, int64(2), clientLength)
+	})
+
+	t.Run(fmt.Sprintf("Adding a new client returns %d history logs with order", secondConHistory), func(t *testing.T) {
+		bytes, _, err := utils.ReadUDPConn(secondConn)
+		if err != nil {
+			t.Error("could not read from second UDP connection: ", err)
+		}
+		command, data := utils.ParseCommandAndData(bytes)
+		assert.Equal(t, utils.AddHistoryCommand, command)
+		var historyLog HistoryLog
+		UnpackTestData(t, data, &historyLog)
+		assert.Equal(t, 0, historyLog.Order)
 	})
 }
 
