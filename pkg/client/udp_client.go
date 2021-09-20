@@ -1,7 +1,6 @@
 package client
 
 import (
-	"fmt"
 	"github.com/rivo/tview"
 )
 
@@ -11,22 +10,12 @@ func NewUDPClient() (*tview.Application, error) {
 	if err != nil {
 		return nil, err
 	}
-	box := tview.NewTextView().SetChangedFunc(func() {
-		app.Draw()
-	})
-	box.SetDynamicColors(true).SetScrollable(true).SetBorder(true).SetTitle("Hello, world!")
+	messageBoard := NewMessageBoard(app, connection)
 
-	go func() {
-		history := <-connection.HistoryChan
-		box.SetText(fmt.Sprintf("history loaded %d messages", len(history)))
-	}()
+	mainFlex := tview.NewFlex()
+	mainFlex.SetDirection(tview.FlexRow)
+	mainFlex.AddItem(messageBoard.Frame, 0, 1, false)
 
-	go func() {
-		for err := range connection.LogChan {
-			fmt.Fprint(box, "[red]error:[::-] ", err.Error())
-		}
-	}()
-
-	app.SetRoot(box, true)
+	app.SetRoot(mainFlex, true)
 	return app, nil
 }
