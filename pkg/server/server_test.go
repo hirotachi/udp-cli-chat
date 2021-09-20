@@ -108,8 +108,10 @@ func TestNetServer_Request(t *testing.T) {
 	})
 
 	var secondConHistory int
+	var secondConInitialPayload *InitialPayload
+
 	t.Run("Sending another connect with new client receives  initialPayload with history length", func(t *testing.T) {
-		secondConInitialPayload := AddTestClient(t, secondConn, secondClientLoginInput)
+		secondConInitialPayload = AddTestClient(t, secondConn, secondClientLoginInput)
 		assert.NotEmpty(t, secondConInitialPayload.AssignedId)
 		assert.Equal(t, 1, secondConInitialPayload.HistoryLength)
 		secondConHistory = secondConInitialPayload.HistoryLength
@@ -153,11 +155,8 @@ func TestNetServer_Request(t *testing.T) {
 	})
 
 	t.Run("Sending disconnect request sets client on db to offline", func(t *testing.T) {
-		if err := utils.WriteToUDPConn(conn, utils.DisconnectCommand, initialPayload.AssignedId); err != nil {
-			t.Error("could not write to UDP connection: ", err)
-		}
+		DisconnectTestClient(t, conn, initialPayload.AssignedId)
 
-		time.Sleep(500 * time.Millisecond) // wait a bit for the  server to handle the disconnection first
 		//make sure redis has an update status for clients
 		result, err := server.RedisClient.SMembers(ctx, utils.RedisClientsSetKey).Result()
 		if err != nil {
@@ -170,6 +169,17 @@ func TestNetServer_Request(t *testing.T) {
 				assert.False(t, c.Online)
 			}
 		}
+	})
+	t.Run("Sending disconnect request for the last connected client clears history list in db", func(t *testing.T) {
+		DisconnectTestClient(t, secondConn, secondConInitialPayload.AssignedId)
+
+		//	 make sure history list is deleted on redis
+		flushedHistoryLength, err := server.RedisClient.LLen(ctx, utils.RedisHistoryKey).Result()
+		if err != nil {
+			t.Error("failed to fetch history length")
+		}
+		assert.Equal(t, int64(0), flushedHistoryLength)
+
 	})
 }
 
@@ -200,4 +210,11 @@ func AddTestClient(t *testing.T, conn *net.UDPConn, loginInput *LoginInput) *Ini
 	var initialPayload InitialPayload
 	UnpackTestData(t, data, &initialPayload)
 	return &initialPayload
+}
+
+func DisconnectTestClient(t *testing.T, conn *net.UDPConn, clientId string) {
+	if err := utils.WriteToUDPConn(conn, utils.DisconnectCommand, clientId); err != nil {
+		t.Error("could not write to UDP connection: ", err)
+	}
+	time.Sleep(200 * time.Millisecond) // wait a bit for the  server to handle the disconnection first
 }
