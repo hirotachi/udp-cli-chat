@@ -51,24 +51,22 @@ func TestNetServer_Request(t *testing.T) {
 	conn := CreateTestConnection(t, serverAddress)
 	defer conn.Close()
 
+	secondConn := CreateTestConnection(t, serverAddress)
+	defer secondConn.Close()
+
 	clientLoginInput := &LoginInput{
 		Username: "tester",
 	}
-	var initialPayload InitialPayload
+	secondClientLoginInput := &LoginInput{
+		Username: "tester2",
+	}
+
+	var initialPayload *InitialPayload
 
 	t.Run("Sending first connect with username returns assignedID and history length", func(t *testing.T) {
-		if err := utils.WriteToUDPConn(conn, utils.ConnectCommand, clientLoginInput); err != nil {
-			t.Error("could not write to UDP connection: ", err)
-		}
-		bytes, _, err := utils.ReadUDPConn(conn)
-		if err != nil {
-			t.Error("could not read from UDP connection: ", err)
-		}
-		command, data := utils.ParseCommandAndData(bytes)
-		assert.Equal(t, utils.InitialPayloadCommand, command)
-		UnpackTestData(t, data, &initialPayload)
+		initialPayload = AddTestClient(t, conn, clientLoginInput)
 		assert.NotEmpty(t, initialPayload.AssignedId)
-		assert.Equal(t, initialPayload.HistoryLength, 0)
+		assert.Equal(t, 0, initialPayload.HistoryLength)
 
 		clientLength, err := server.RedisClient.SCard(ctx, utils.RedisClientsSetKey).Result()
 		if err != nil {
@@ -106,6 +104,18 @@ func TestNetServer_Request(t *testing.T) {
 		}
 		assert.Equal(t, int64(1), historyLength)
 	})
+
+	t.Run("Sending another connect with new client receives  initialPayload with history length", func(t *testing.T) {
+		secondConInitialPayload := AddTestClient(t, secondConn, secondClientLoginInput)
+		assert.NotEmpty(t, secondConInitialPayload.AssignedId)
+		assert.Equal(t, 1, secondConInitialPayload.HistoryLength)
+
+		clientLength, err := server.RedisClient.SCard(ctx, utils.RedisClientsSetKey).Result()
+		if err != nil {
+			t.Error("failed to fetch clients set length from redis")
+		}
+		assert.Equal(t, int64(2), clientLength)
+	})
 }
 
 func CreateTestConnection(t *testing.T, address string) *net.UDPConn {
@@ -120,4 +130,19 @@ func UnpackTestData(t *testing.T, data []byte, target interface{}) {
 	if err := json.Unmarshal(data, target); err != nil {
 		t.Error("could not unmarshal messages list")
 	}
+}
+
+func AddTestClient(t *testing.T, conn *net.UDPConn, loginInput *LoginInput) *InitialPayload {
+	if err := utils.WriteToUDPConn(conn, utils.ConnectCommand, loginInput); err != nil {
+		t.Error("could not write to UDP connection: ", err)
+	}
+	bytes, _, err := utils.ReadUDPConn(conn)
+	if err != nil {
+		t.Error("could not read from UDP connection: ", err)
+	}
+	command, data := utils.ParseCommandAndData(bytes)
+	assert.Equal(t, utils.InitialPayloadCommand, command)
+	var initialPayload InitialPayload
+	UnpackTestData(t, data, &initialPayload)
+	return &initialPayload
 }
