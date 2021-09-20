@@ -13,28 +13,32 @@ type MessageBoard struct {
 	Frame      *tview.Frame
 	Store      []*server.Message
 	Connection *Connection
+	Focus      func(view string)
 }
 
 func NewMessageBoard(app *tview.Application, connection *Connection) *MessageBoard {
 	messageView := tview.NewTextView().SetChangedFunc(func() {
 		app.Draw()
 	})
-	messageView.SetDynamicColors(true).SetScrollable(true)
+	messageView.SetDynamicColors(true).SetScrollable(true).SetRegions(true)
 
 	//todo:add text to welcome user
 	//todo:add text with commands and indication that if you want to see commands type /help in input
 	messageFrame := tview.NewFrame(messageView)
 	messageFrame.SetTitle("[#Cocus chat]").SetBorder(true).SetTitleAlign(0)
+
 	messageBoard := &MessageBoard{
 		View:       messageView,
 		Frame:      messageFrame,
 		Store:      make([]*server.Message, 0),
 		Connection: connection,
 	}
+
 	go messageBoard.ListenToHistoryLoad()
 	go messageBoard.ListenToMessages()
 	go messageBoard.ListenToConnectionLog()
 
+	messageBoard.ShowWelcomeText()
 	return messageBoard
 }
 
@@ -49,7 +53,6 @@ func (board *MessageBoard) ListenToHistoryLoad() {
 	}
 	board.StreamToMessageView(historyLog...)
 	board.View.ScrollToEnd()
-	//todo stream history to view
 }
 
 func (board *MessageBoard) ListenToMessages() {
@@ -93,12 +96,22 @@ func (board *MessageBoard) HandleInput(text string) {
 	}
 }
 
+func (board *MessageBoard) ShowWelcomeText() {
+	welcomeText := `[lightgrey::b]Welcome to Chat[::-]`
+	board.StreamToMessageView(welcomeText, "\n\n")
+	board.ListCommands()
+}
+
 func (board *MessageBoard) ListCommands() {
 	// todo: add more commands
 	commands := `[lightgrey::b]Commands[::-]
 	[grey]/[::-][white::b]help[::-] [lightgrey]Shows this commands list.[::-]
 	`
-	if _, err := fmt.Fprint(board.View, commands, "\n"); err != nil {
+	arrows := `[lightgrey::b]Commands[::-]
+	[grey]UpArrow[::-] [lightgrey]When input focused will focus message list.[::-]
+	[grey]ESC[::-] [lightgrey]Will exit message list focus.[::-]
+	`
+	if _, err := fmt.Fprint(board.View, commands, "\n", arrows, "\n"); err != nil {
 		board.Connection.LogError(fmt.Errorf("failed to list commands: %s", err))
 	}
 }
