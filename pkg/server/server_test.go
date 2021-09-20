@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"testing"
+	"time"
 )
 
 var server *Server
@@ -149,6 +150,26 @@ func TestNetServer_Request(t *testing.T) {
 			t.Error("failed to get history length from redis: ", err)
 		}
 		assert.Equal(t, int64(0), historyLength)
+	})
+
+	t.Run("Sending disconnect request sets client on db to offline", func(t *testing.T) {
+		if err := utils.WriteToUDPConn(conn, utils.DisconnectCommand, initialPayload.AssignedId); err != nil {
+			t.Error("could not write to UDP connection: ", err)
+		}
+
+		time.Sleep(500 * time.Millisecond) // wait a bit for the  server to handle the disconnection first
+		//make sure redis has an update status for clients
+		result, err := server.RedisClient.SMembers(ctx, utils.RedisClientsSetKey).Result()
+		if err != nil {
+			t.Error("could not fetch client set members from redis: ", err)
+		}
+		for _, clientStr := range result {
+			var c Client
+			UnpackTestData(t, []byte(clientStr), &c)
+			if c.ID == initialPayload.AssignedId {
+				assert.False(t, c.Online)
+			}
+		}
 	})
 }
 

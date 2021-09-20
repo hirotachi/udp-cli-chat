@@ -9,7 +9,7 @@ import (
 
 type Client struct {
 	Name          string        `json:"name"`
-	Address       *net.UDPAddr  `json:"-"`
+	Address       *net.UDPAddr  `json:"address"`
 	Online        bool          `json:"online"`
 	ID            string        `json:"id,omitempty"`
 	conn          *net.UDPConn  `json:"-"`

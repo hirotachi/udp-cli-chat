@@ -66,6 +66,8 @@ func (chat *Chat) HandleUDPConnection() {
 			chat.AddMessage(data, addr)
 		case utils.DeleteMessageCommand:
 			chat.DeleteMessage(data, addr)
+		case utils.DisconnectCommand:
+			chat.Disconnect(data, addr)
 		default:
 			log.Printf("unknown command \"%s\" from address: %s\n", command, addr)
 		}
@@ -129,6 +131,40 @@ func (chat *Chat) Join(addr *net.UDPAddr, data []byte) {
 	log.Printf("client \"%s\" connected\n", addr)
 
 	go chat.SendInitialPayload(client)
+}
+
+func (chat *Chat) Disconnect(data []byte, addr *net.UDPAddr) {
+	clientID := string(data)
+	client, ok := chat.Clients[clientID]
+	if !ok {
+		log.Printf("client \"%s\" does exist\n", clientID)
+		return
+	}
+	clientBytes, err := json.Marshal(client)
+	if err != nil {
+		log.Printf("could not marshal client \"%s\" for redis removal: %s\n", clientID, err)
+		return
+	}
+
+	// remove client from redis to re-add with updated status
+	if err := chat.RedisClient.SRem(context.Background(), utils.RedisClientsSetKey, string(clientBytes)).Err(); err != nil {
+		log.Printf("could not remove client  \"%s\" from redis set: %s\n", clientID, err)
+		return
+	}
+	client.Online = false
+	if err := chat.SaveClientToRedis(client); err != nil {
+		log.Println(err)
+		return
+	}
+	chat.connected -= 1
+	if chat.connected == 0 { // clear messages history
+		if err := chat.RedisClient.Del(context.Background(), utils.RedisHistoryKey).Err(); err != nil {
+			log.Println("failed to empty redis history: ", err)
+			return
+		}
+		chat.History = make([]*Message, 0)
+	}
+	log.Printf("client \"%s\" disconnected\n", addr)
 }
 
 func (chat *Chat) ListenToChannels() {
