@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/go-redis/redis/v8"
 	"github.com/hirotachi/udp-cli-chat/pkg/utils"
 	"log"
@@ -60,6 +62,8 @@ func (chat *Chat) HandleUDPConnection() {
 }
 
 func (chat *Chat) Join(addr *net.UDPAddr, data []byte) {
+	ctx := context.Background()
+
 	var client *Client
 	var oldClient Client // to be deleted from redis if client is reconnecting
 
@@ -91,13 +95,24 @@ func (chat *Chat) Join(addr *net.UDPAddr, data []byte) {
 
 	if (oldClient != Client{}) {
 		//	todo remove old client from redis
-	} else if !oldClient.Online {
-		// don't increase the connected count if old saved version is already online
+		bytes, err := json.Marshal(oldClient)
+		if err != nil {
+			log.Println("could not marshal old client to be saved to redis: ", err)
+			return
+		}
+		if err := chat.RedisClient.SRem(ctx, utils.RedisClientsSetKey, string(bytes)).Err(); err != nil {
+			log.Println("failed to remove old client from redis set: ", err)
+			return
+		}
+	}
+	if err := chat.SaveClientToRedis(client); err != nil {
+		log.Println(err)
+		return
+	}
+	chat.Clients[client.ID] = client
+	if !oldClient.Online {
 		chat.connected += 1
 	}
-	// todo:save new client to redis
-
-	chat.Clients[client.ID] = client
 
 	go client.Listen()
 	log.Printf("client \"%s\" connected\n", addr)
@@ -124,4 +139,15 @@ func (chat *Chat) SendInitialPayload(client *Client) {
 	}
 	utils.BroadcastWithCommand(client.BroadcastChan, utils.InitialPayloadCommand, initialPayload)
 
+}
+
+func (chat *Chat) SaveClientToRedis(client *Client) error {
+	bytes, err := json.Marshal(client)
+	if err != nil {
+		return fmt.Errorf("could not marshal client to be saved to redis: %s", err)
+	}
+	if err := chat.RedisClient.SAdd(context.Background(), utils.RedisClientsSetKey, string(bytes)).Err(); err != nil {
+		return fmt.Errorf("could not save client to redis set: %s", err)
+	}
+	return nil
 }

@@ -9,5 +9,4 @@ type Message struct {
 	AuthorID   string    `json:"author_id,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 	Edited     bool      `json:"edited"`
-	Order      int       `json:"order"`
 }

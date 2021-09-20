@@ -46,12 +46,15 @@ func TestNetServer_Run(t *testing.T) {
 }
 
 func TestNetServer_Request(t *testing.T) {
+	ctx := context.TODO()
+
 	conn := CreateTestConnection(t, serverAddress)
 	defer conn.Close()
 
 	clientLoginInput := &LoginInput{
 		Username: "tester",
 	}
+	var initialPayload InitialPayload
 
 	t.Run("Sending first connect with username returns assignedID and history length", func(t *testing.T) {
 		if err := utils.WriteToUDPConn(conn, utils.ConnectCommand, clientLoginInput); err != nil {
@@ -63,11 +66,17 @@ func TestNetServer_Request(t *testing.T) {
 		}
 		command, data := utils.ParseCommandAndData(bytes)
 		assert.Equal(t, utils.InitialPayloadCommand, command)
-		var initialPayload InitialPayload
 		UnpackTestData(t, data, &initialPayload)
 		assert.NotEmpty(t, initialPayload.AssignedId)
 		assert.Equal(t, initialPayload.HistoryLength, 0)
+
+		clientLength, err := server.RedisClient.SCard(ctx, utils.RedisClientsSetKey).Result()
+		if err != nil {
+			t.Error("failed to fetch clients set length from redis")
+		}
+		assert.Equal(t, int64(1), clientLength)
 	})
+
 }
 
 func CreateTestConnection(t *testing.T, address string) *net.UDPConn {
