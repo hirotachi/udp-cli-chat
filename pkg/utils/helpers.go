@@ -63,10 +63,18 @@ func BroadcastWithCommand(channel chan []byte, command string, data interface{})
 }
 
 func BuildUDPMessage(command string, data interface{}) []byte {
-	bytes, err := json.Marshal(data)
-	if err != nil {
-		log.Printf("failed to marshal command %s data: %s\n", command, err)
-		return nil
+	var bytes []byte
+	var err error
+	switch command {
+	case DeleteMessageCommand:
+		bytes = []byte(data.(string))
+	default:
+		bytes, err = json.Marshal(data)
+		if err != nil {
+			log.Printf("failed to marshal command %s data: %s\n", command, err)
+			return nil
+		}
 	}
+
 	return append([]byte(command), bytes...)
 }

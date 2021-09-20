@@ -64,6 +64,8 @@ func (chat *Chat) HandleUDPConnection() {
 			chat.Join(addr, data)
 		case utils.AddMessageCommand:
 			chat.AddMessage(data, addr)
+		case utils.DeleteMessageCommand:
+			chat.DeleteMessage(data, addr)
 		default:
 			log.Printf("unknown command \"%s\" from address: %s\n", command, addr)
 		}
@@ -209,10 +211,54 @@ func (chat *Chat) AddMessage(data []byte, addr *net.UDPAddr) {
 	if len(history) == chat.HistoryLimit { // limit history
 		history = history[len(history)-19:]
 	}
-	chat.History = append(chat.History, &message)
+	msg := message // copy so message doesn't get mutated
+	chat.History = append(chat.History, &msg)
 	message.AuthorName = client.Name // add author name to be recognized by other clients
 
 	chat.MessageChan <- message
+}
+
+func (chat *Chat) DeleteMessage(data []byte, addr *net.UDPAddr) {
+	var msg Message
+	if err := json.Unmarshal(data, &msg); err != nil {
+		log.Println("failed to unmarshal deleted message: ", err)
+		return
+	}
+	if msg.AuthorID == "" || msg.ID == "" {
+		log.Printf("failed to delete message from \"%s\"\n", addr)
+		return
+	}
+	_, ok := chat.Clients[msg.AuthorID]
+	if !ok {
+		log.Printf("failed to delete message from \"%s\"\n", addr)
+		return
+	}
+
+	msg.AuthorName = "" // remove author_name to find on redis list
+	msgBytes, err := json.Marshal(msg)
+	if err != nil {
+		log.Println("failed to marshal msg for redis deletion: ", err)
+		return
+	}
+	removedCount, err := chat.RedisClient.LRem(context.Background(), utils.RedisHistoryKey, 1, string(msgBytes)).Result()
+	if err != nil {
+		log.Println("could not remove msg from redis: ", err)
+		return
+	}
+	if removedCount == 0 {
+		log.Printf("message \"%s\" doesnt exists on redis to be removed\n", msg.ID)
+		return
+	}
+
+	newHistory := make([]*Message, 0)
+	for _, message := range chat.History {
+		m := message
+		if m.ID != msg.ID {
+			newHistory = append(newHistory, m)
+		}
+	}
+	chat.History = newHistory
+	utils.BroadcastWithCommand(chat.BroadcastChan, utils.DeleteMessageCommand, msg.ID)
 }
 
 func (chat *Chat) SaveClientToRedis(client *Client) error {

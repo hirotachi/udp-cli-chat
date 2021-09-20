@@ -132,6 +132,24 @@ func TestNetServer_Request(t *testing.T) {
 		assert.Equal(t, 0, historyLog.Order)
 	})
 
+	t.Run("Sending delete message request broadcasts message deletion to all clients", func(t *testing.T) {
+		if err := utils.WriteToUDPConn(conn, utils.DeleteMessageCommand, receivedMessage); err != nil {
+			t.Error("could not write to UDP connection: ", err)
+		}
+		bytes, _, err := utils.ReadUDPConn(conn)
+		if err != nil {
+			t.Error("could not read from second UDP connection: ", err)
+		}
+		command, data := utils.ParseCommandAndData(bytes)
+		assert.Equal(t, utils.DeleteMessageCommand, command)
+		assert.Equal(t, receivedMessage.ID, string(data))
+
+		historyLength, err := server.RedisClient.LLen(ctx, utils.RedisHistoryKey).Result()
+		if err != nil {
+			t.Error("failed to get history length from redis: ", err)
+		}
+		assert.Equal(t, int64(0), historyLength)
+	})
 }
 
 func CreateTestConnection(t *testing.T, address string) *net.UDPConn {
