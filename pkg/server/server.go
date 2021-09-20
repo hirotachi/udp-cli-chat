@@ -17,6 +17,9 @@ func (s *Server) Run() error {
 	if err != nil {
 		return err
 	}
+	chat := NewChat(s)
+
+	chat.Listen()
 	return nil
 }
 
