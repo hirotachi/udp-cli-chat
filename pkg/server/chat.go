@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"github.com/go-redis/redis/v8"
 	"github.com/hirotachi/udp-cli-chat/pkg/utils"
+	"github.com/rs/xid"
 	"log"
 	"net"
+	"time"
 )
 
 type Chat struct {
@@ -16,8 +18,9 @@ type Chat struct {
 	History       []*Message
 	Clients       map[string]*Client
 	BroadcastChan chan []byte
-	MessageChan   chan *Message
+	MessageChan   chan Message
 	connected     int
+	HistoryLimit  int
 }
 
 type InitialPayload struct {
@@ -34,13 +37,15 @@ func NewChat(server *Server) *Chat {
 		History:       make([]*Message, 0),
 		Clients:       map[string]*Client{},
 		BroadcastChan: make(chan []byte),
-		MessageChan:   make(chan *Message),
+		MessageChan:   make(chan Message),
 		connected:     0,
+		HistoryLimit:  20,
 	}
 }
 
 func (chat *Chat) Listen() {
 	defer chat.conn.Close()
+	go chat.ListenToChannels()
 	for {
 		chat.HandleUDPConnection()
 	}
@@ -56,6 +61,8 @@ func (chat *Chat) HandleUDPConnection() {
 	switch command {
 	case utils.ConnectCommand:
 		chat.Join(addr, data)
+	case utils.AddMessageCommand:
+		chat.AddMessage(data, addr)
 	default:
 		log.Printf("unknown command \"%s\" from address: %s\n", command, addr)
 	}
@@ -120,13 +127,29 @@ func (chat *Chat) Join(addr *net.UDPAddr, data []byte) {
 	go chat.SendInitialPayload(client)
 }
 
-func (chat *Chat) ListenToBroadCast() {
-	for msg := range chat.BroadcastChan {
+func (chat *Chat) ListenToChannels() {
+	// iterate over all clients
+	forEachClient := func(isOnline bool, handler func(client *Client)) {
 		for _, client := range chat.Clients {
 			c := client
-			if c.Online {
-				c.BroadcastChan <- msg
+			if isOnline == c.Online {
+				handler(c)
 			}
+		}
+	}
+	for {
+		select {
+		case msg := <-chat.BroadcastChan:
+			forEachClient(true, func(client *Client) {
+				client.BroadcastChan <- msg
+			})
+		case msg := <-chat.MessageChan:
+			forEachClient(true, func(client *Client) {
+				if client.ID != msg.AuthorID { // hide other clients ids from client
+					msg.AuthorID = ""
+				}
+				client.MessageChan <- &msg
+			})
 		}
 	}
 }
@@ -138,7 +161,37 @@ func (chat *Chat) SendInitialPayload(client *Client) {
 		HistoryLength: len(chat.History),
 	}
 	utils.BroadcastWithCommand(client.BroadcastChan, utils.InitialPayloadCommand, initialPayload)
+}
 
+func (chat *Chat) AddMessage(data []byte, addr *net.UDPAddr) {
+	var message Message
+	if err := json.Unmarshal(data, &message); err != nil {
+		log.Println("failed to unmarshal message: ", err)
+		return
+	}
+	var client *Client
+	if message.AuthorID != "" { // check if client exists before saving message
+		var ok bool
+		client, ok = chat.Clients[message.AuthorID]
+		if !ok {
+			log.Printf("Unrecognized client \"%s\" with id \"%s\"\n", addr, message.AuthorID)
+			return
+		}
+	}
+	message.ID = xid.New().String()
+	message.CreatedAt = time.Now()
+	if err := chat.SaveMessageToRedis(&message); err != nil {
+		log.Println(err)
+		return
+	}
+	history := chat.History
+	if len(history) == chat.HistoryLimit { // limit history
+		history = history[len(history)-19:]
+	}
+	chat.History = append(chat.History, &message)
+	message.AuthorName = client.Name // add author name to be recognized by other clients
+
+	chat.MessageChan <- message
 }
 
 func (chat *Chat) SaveClientToRedis(client *Client) error {
@@ -148,6 +201,29 @@ func (chat *Chat) SaveClientToRedis(client *Client) error {
 	}
 	if err := chat.RedisClient.SAdd(context.Background(), utils.RedisClientsSetKey, string(bytes)).Err(); err != nil {
 		return fmt.Errorf("could not save client to redis set: %s", err)
+	}
+	return nil
+}
+
+func (chat *Chat) SaveMessageToRedis(message *Message) error {
+	ctx := context.Background()
+	historyLength, err := chat.RedisClient.LLen(ctx, utils.RedisHistoryKey).Result()
+	if err != nil {
+		log.Println("failed to fetch history length from redis: ", err)
+	}
+
+	if historyLength == int64(historyLength) { // limit history log on redis
+		if err := chat.RedisClient.LTrim(ctx, utils.RedisHistoryKey, 1, -1).Err(); err != nil {
+			return fmt.Errorf("failed to limit redis history to 20 entries: %s", err)
+		}
+	}
+
+	bytes, err := json.Marshal(message)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %s", err)
+	}
+	if err := chat.RedisClient.RPush(ctx, utils.RedisHistoryKey, string(bytes)).Err(); err != nil {
+		return fmt.Errorf("failed to save message to redis history: %s", err)
 	}
 	return nil
 }

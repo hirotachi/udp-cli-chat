@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/hirotachi/udp-cli-chat/pkg/utils"
 	"github.com/rs/xid"
 	"log"
 	"net"
@@ -33,6 +34,8 @@ func (c *Client) Listen() {
 		select {
 		case msg := <-c.BroadcastChan:
 			c.SendMessage(msg)
+		case msg := <-c.MessageChan:
+			c.SendMessage(utils.BuildUDPMessage(utils.AddMessageCommand, msg))
 		}
 	}
 }

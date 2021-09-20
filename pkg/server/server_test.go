@@ -77,6 +77,35 @@ func TestNetServer_Request(t *testing.T) {
 		assert.Equal(t, int64(1), clientLength)
 	})
 
+	t.Run("Sending add message request with message broadcasts message to all clients", func(t *testing.T) {
+		message := &Message{
+			Content:  "hello world",
+			AuthorID: initialPayload.AssignedId,
+		}
+		if err := utils.WriteToUDPConn(conn, utils.AddMessageCommand, message); err != nil {
+			t.Error("could not write to UDP connection: ", err)
+		}
+		bytes, _, err := utils.ReadUDPConn(conn)
+		if err != nil {
+			t.Error("could not read from UDP connection: ", err)
+		}
+		command, data := utils.ParseCommandAndData(bytes)
+		assert.Equal(t, utils.AddMessageCommand, command)
+		var receivedMessage Message
+		UnpackTestData(t, data, &receivedMessage)
+		assert.NotEmpty(t, receivedMessage.ID)
+		assert.Equal(t, initialPayload.AssignedId, receivedMessage.AuthorID)
+		assert.Equal(t, clientLoginInput.Username, receivedMessage.AuthorName)
+		assert.Equal(t, message.Content, receivedMessage.Content)
+		assert.Empty(t, receivedMessage.Edited)
+		assert.NotEmpty(t, receivedMessage.CreatedAt)
+
+		historyLength, err := server.RedisClient.LLen(ctx, utils.RedisHistoryKey).Result()
+		if err != nil {
+			t.Error("failed to get history length from redis: ", err)
+		}
+		assert.Equal(t, int64(1), historyLength)
+	})
 }
 
 func CreateTestConnection(t *testing.T, address string) *net.UDPConn {

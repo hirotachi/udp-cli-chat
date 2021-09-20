@@ -8,5 +8,6 @@ const (
 	AddHistoryCommand     = "/add_history>"
 	AddMessageCommand     = "/add_message>"
 
-	RedisClientsSetKey = "redis_clients_set"
+	RedisClientsSetKey = "clients_set"
+	RedisHistoryKey    = "history_key"
 )
