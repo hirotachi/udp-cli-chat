@@ -41,6 +41,14 @@ func NewMessageBoard(app *tview.Application, connection *Connection) *MessageBoa
 func (board *MessageBoard) ListenToHistoryLoad() {
 	history := <-board.Connection.HistoryChan
 	board.Store = history
+	historyLog := make([]interface{}, 0)
+	for _, message := range history {
+		msg := message
+		formattedMessage := board.GenerateMessageLog(msg)
+		historyLog = append(historyLog, formattedMessage...)
+	}
+	board.StreamToMessageView(historyLog...)
+	board.View.ScrollToEnd()
 	//todo stream history to view
 }
 

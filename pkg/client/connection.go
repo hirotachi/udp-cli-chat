@@ -127,7 +127,6 @@ func (c *Connection) HandleInitialPayload(data []byte) {
 	c.AssignID = initialPayload.AssignedId
 	if initialPayload.HistoryLength == 0 {
 		c.isHistoryLoaded = true
-		c.LogError(fmt.Errorf("history is loaded succefuly"))
 		return
 	}
 	c.InitialHistory = make([]*server.Message, initialPayload.HistoryLength)
