@@ -1,2 +1,6 @@
+# Ignore intellij files
 .idea
+
+# Ignore binaries
 cmd/udp-server/udp-server
+cmd/udp-client/udp-client
