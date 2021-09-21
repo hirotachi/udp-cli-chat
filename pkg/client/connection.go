@@ -24,18 +24,8 @@ type Connection struct {
 	app                *tview.Application
 }
 
-func NewConnection(address string, username string, app *tview.Application) (*Connection, error) {
-	remoteAddress, err := net.ResolveUDPAddr("udp", address)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve address: %s", err)
-	}
-	conn, err := net.DialUDP("udp", nil, remoteAddress)
-	if err != nil {
-		return nil, fmt.Errorf("failed to dial connection: %s", err)
-	}
-
-	connection := &Connection{
-		conn:               conn,
+func NewConnection(app *tview.Application) *Connection {
+	return &Connection{
 		errorsLog:          make([]error, 0),
 		MessageChan:        make(chan []byte),
 		LogChan:            make(chan error),
@@ -47,12 +37,23 @@ func NewConnection(address string, username string, app *tview.Application) (*Co
 		app:                app,
 		MessageDeleteChan:  make(chan string),
 	}
-	connection.RegisterClient(username)
+}
 
-	go connection.Listen()
-	go connection.ListenToQueue()
+func (c *Connection) Connect(serverAddress string, username string) error {
+	remoteAddress, err := net.ResolveUDPAddr("udp", serverAddress)
+	if err != nil {
+		return fmt.Errorf("failed to resolve address: %s", err)
+	}
+	conn, err := net.DialUDP("udp", nil, remoteAddress)
+	if err != nil {
+		return fmt.Errorf("failed to dial connection: %s", err)
+	}
+	c.conn = conn
+	c.RegisterClient(username)
+	go c.Listen()
+	go c.ListenToQueue()
 
-	return connection, nil
+	return nil
 }
 
 func (c *Connection) Listen() {
