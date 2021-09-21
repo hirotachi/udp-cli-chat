@@ -316,7 +316,7 @@ func (chat *Chat) SaveMessageToRedis(message *Message) error {
 		log.Println("failed to fetch history length from redis: ", err)
 	}
 
-	if historyLength == int64(historyLength) { // limit history log on redis
+	if historyLength == int64(chat.HistoryLimit) { // limit history log on redis
 		if err := chat.RedisClient.LTrim(ctx, utils.RedisHistoryKey, 1, -1).Err(); err != nil {
 			return fmt.Errorf("failed to limit redis history to 20 entries: %s", err)
 		}

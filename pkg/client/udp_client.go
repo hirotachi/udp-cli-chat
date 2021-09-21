@@ -13,7 +13,7 @@ const (
 
 func NewUDPClient() (*tview.Application, error) {
 	app := tview.NewApplication()
-	connection, err := NewConnection(":5000", xid.New().String())
+	connection, err := NewConnection(":5000", xid.New().String(), app)
 	if err != nil {
 		return nil, err
 	}

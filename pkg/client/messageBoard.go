@@ -6,13 +6,16 @@ import (
 	"github.com/hirotachi/udp-cli-chat/pkg/server"
 	"github.com/hirotachi/udp-cli-chat/pkg/utils"
 	"github.com/rivo/tview"
+	"regexp"
+	"strings"
 )
 
 type MessageBoard struct {
-	View       *tview.TextView
-	Frame      *tview.Frame
-	Store      []*server.Message
-	Connection *Connection
+	View           *tview.TextView
+	Frame          *tview.Frame
+	Store          []*server.Message
+	Connection     *Connection
+	ClientMessages map[string]*server.Message
 }
 
 func NewMessageBoard(app *tview.Application, connection *Connection) *MessageBoard {
@@ -25,15 +28,17 @@ func NewMessageBoard(app *tview.Application, connection *Connection) *MessageBoa
 	messageFrame.SetTitle("[#Cocus chat]").SetBorder(true).SetTitleAlign(0)
 
 	messageBoard := &MessageBoard{
-		View:       messageView,
-		Frame:      messageFrame,
-		Store:      make([]*server.Message, 0),
-		Connection: connection,
+		View:           messageView,
+		Frame:          messageFrame,
+		Store:          make([]*server.Message, 0),
+		Connection:     connection,
+		ClientMessages: map[string]*server.Message{},
 	}
 
 	go messageBoard.ListenToHistoryLoad()
 	go messageBoard.ListenToMessages()
 	go messageBoard.ListenToConnectionLog()
+	go messageBoard.ListenToMessageDeletion()
 
 	messageBoard.ShowWelcomeText()
 	return messageBoard
@@ -78,7 +83,14 @@ func (board *MessageBoard) ListenToConnectionLog() {
 	}
 }
 
+var deletionReg = regexp.MustCompile(`/delete T\d+$`)
+
 func (board *MessageBoard) HandleInput(text string) {
+	if deletionReg.MatchString(text) {
+		tag := strings.TrimSpace(strings.Replace(text, "/delete", "", -1))
+		board.HandleDeleteMessageByTag(tag)
+		return
+	}
 	switch text {
 	case "/help":
 		board.ListCommands()
@@ -116,6 +128,10 @@ func (board *MessageBoard) ListCommands() {
 		Action:      "disconnect",
 		Description: "Disconnects you and exists the program.",
 		Prefix:      "/",
+	}, {
+		Action:      "delete",
+		Description: "delete message by tag (/delete T1)",
+		Prefix:      "/",
 	}}
 
 	arrowsOptionsList := []Option{
@@ -125,7 +141,7 @@ func (board *MessageBoard) ListCommands() {
 
 	arrows := BuildOptionsList("Keys", arrowsOptionsList)
 	commands := BuildOptionsList("Commands", commandsOptionsList)
-	if _, err := fmt.Fprint(board.View, commands, "\n", arrows); err != nil {
+	if _, err := fmt.Fprint(board.View, commands, "\n", arrows, "\n"); err != nil {
 		board.Connection.LogError(fmt.Errorf("failed to list commands: %s", err))
 	}
 }
@@ -146,6 +162,47 @@ func (board *MessageBoard) GenerateMessageLog(message *server.Message) []interfa
 	authorName := message.AuthorName
 	if message.AuthorID == board.Connection.AssignID {
 		authorName = fmt.Sprintf("[blue::b]%s[::-]", authorName)
+		clientMessagesLength := len(board.ClientMessages)
+		tag := fmt.Sprintf("T%d", clientMessagesLength+1)
+		board.ClientMessages[tag] = message
+		info = fmt.Sprintf("%s [blue]%s[::-]", info, tag)
 	}
 	return []interface{}{authorName, " ", info, "\n", "  [white]", message.Content, "[::-]\n\n"}
+}
+
+func (board *MessageBoard) HandleDeleteMessageByTag(tag string) {
+	message, ok := board.ClientMessages[tag]
+	if !ok {
+		board.Connection.LogError(fmt.Errorf("message \"%s\" doesnt exist", tag))
+		return
+	}
+	if message.AuthorID == "" {
+		board.Connection.LogError(fmt.Errorf("cannot delete unowned message"))
+		return
+	}
+	board.Connection.DeleteMessage(message)
+}
+
+func (board *MessageBoard) ListenToMessageDeletion() {
+	for msgId := range board.Connection.MessageDeleteChan {
+		board.ClientMessages = map[string]*server.Message{}
+		newStore := make([]*server.Message, 0)
+		newStoreLog := make([]interface{}, 0)
+
+		for _, message := range board.Store {
+			msg := message
+			if msg.ID != msgId {
+				newStore = append(newStore, msg)
+				formattedMessage := board.GenerateMessageLog(msg)
+				newStoreLog = append(newStoreLog, formattedMessage...)
+			}
+		}
+		board.Store = newStore
+		updatedText := ""
+		for _, str := range newStoreLog {
+			s := str.(string)
+			updatedText += s
+		}
+		board.View.SetText(updatedText)
+	}
 }

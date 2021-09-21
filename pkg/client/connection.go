@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"github.com/hirotachi/udp-cli-chat/pkg/server"
 	"github.com/hirotachi/udp-cli-chat/pkg/utils"
+	"github.com/rivo/tview"
 	"net"
-	"os"
 )
 
 type Connection struct {
@@ -20,9 +20,11 @@ type Connection struct {
 	InitialHistory     []*server.Message
 	LocalHistoryLength int
 	isHistoryLoaded    bool
+	MessageDeleteChan  chan string
+	app                *tview.Application
 }
 
-func NewConnection(address string, username string) (*Connection, error) {
+func NewConnection(address string, username string, app *tview.Application) (*Connection, error) {
 	remoteAddress, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve address: %s", err)
@@ -42,6 +44,8 @@ func NewConnection(address string, username string) (*Connection, error) {
 		isHistoryLoaded:    false,
 		InitialHistory:     make([]*server.Message, 0),
 		UDPMessagesQueue:   make(chan []byte),
+		app:                app,
+		MessageDeleteChan:  make(chan string),
 	}
 	connection.RegisterClient(username)
 
@@ -83,6 +87,7 @@ func (c *Connection) HandleUDPMessage(msg []byte) {
 		case utils.AddMessageCommand:
 			c.MessageChan <- data
 		case utils.DeleteMessageCommand:
+			c.MessageDeleteChan <- string(data)
 		default:
 			c.LogError(fmt.Errorf("unrecognized command from UDP connection: \"%s\"", command))
 		}
@@ -154,5 +159,11 @@ func (c *Connection) Disconnect() {
 	if err := utils.WriteToUDPConn(c.conn, utils.DisconnectCommand, c.AssignID); err != nil {
 		return
 	}
-	os.Exit(1)
+	c.app.Stop()
+}
+
+func (c *Connection) DeleteMessage(message *server.Message) {
+	if err := utils.WriteToUDPConn(c.conn, utils.DeleteMessageCommand, message); err != nil {
+		return
+	}
 }
