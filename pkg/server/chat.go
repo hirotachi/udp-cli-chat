@@ -29,18 +29,45 @@ type InitialPayload struct {
 }
 
 func NewChat(server *Server) *Chat {
-	//	 todo fetch messages from redis
-	//	 todo fetch clients from redis
+	clientsMap, connected := FetchClientsFromRedis(server.RedisClient)
+	history := FetchHistoryFromRedis(server.RedisClient)
 	return &Chat{
 		RedisClient:   server.RedisClient,
 		conn:          server.conn,
-		History:       make([]*Message, 0),
-		Clients:       map[string]*Client{},
+		History:       history,
+		Clients:       clientsMap,
 		BroadcastChan: make(chan []byte),
 		MessageChan:   make(chan Message),
-		connected:     0,
+		connected:     connected,
 		HistoryLimit:  20,
 	}
+}
+
+func FetchHistoryFromRedis(redisClient *redis.Client) []*Message {
+	history := make([]*Message, 0)
+	if err := redisClient.LRange(context.Background(), utils.RedisHistoryKey, 0, -1).ScanSlice(&history); err != nil && err != redis.Nil {
+		log.Println("could not fetch redis messages history: ", err)
+	}
+	return history
+}
+
+func FetchClientsFromRedis(redisClient *redis.Client) (map[string]*Client, int) {
+	clients := make([]*Client, 0)
+	if err := redisClient.SMembers(context.Background(), utils.RedisClientsSetKey).ScanSlice(&clients); err != nil && err != redis.Nil {
+		log.Println("could not fetch redis clients list: ", err)
+	}
+	clientsByIdMap := map[string]*Client{}
+	connected := 0
+	if len(clients) != 0 {
+		for _, c := range clients {
+			client := c
+			clientsByIdMap[client.ID] = client
+			if client.Online {
+				connected++
+			}
+		}
+	}
+	return clientsByIdMap, connected
 }
 
 func (chat *Chat) Listen() {
