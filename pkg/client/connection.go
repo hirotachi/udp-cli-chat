@@ -157,6 +157,9 @@ func (c *Connection) AddMessageToHistory(data []byte) {
 }
 
 func (c *Connection) Disconnect() {
+	if c.AssignID == "" {
+		return
+	}
 	if err := utils.WriteToUDPConn(c.conn, utils.DisconnectCommand, c.AssignID); err != nil {
 		return
 	}
