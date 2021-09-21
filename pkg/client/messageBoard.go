@@ -13,7 +13,6 @@ type MessageBoard struct {
 	Frame      *tview.Frame
 	Store      []*server.Message
 	Connection *Connection
-	Focus      func(view string)
 }
 
 func NewMessageBoard(app *tview.Application, connection *Connection) *MessageBoard {
@@ -22,8 +21,6 @@ func NewMessageBoard(app *tview.Application, connection *Connection) *MessageBoa
 	})
 	messageView.SetDynamicColors(true).SetScrollable(true).SetRegions(true)
 
-	//todo:add text to welcome user
-	//todo:add text with commands and indication that if you want to see commands type /help in input
 	messageFrame := tview.NewFrame(messageView)
 	messageFrame.SetTitle("[#Cocus chat]").SetBorder(true).SetTitleAlign(0)
 
@@ -85,6 +82,8 @@ func (board *MessageBoard) HandleInput(text string) {
 	switch text {
 	case "/help":
 		board.ListCommands()
+	case "/disconnect":
+		board.Connection.Disconnect()
 	default:
 		message := &server.Message{
 			Content:  text,
@@ -102,27 +101,51 @@ func (board *MessageBoard) ShowWelcomeText() {
 	board.ListCommands()
 }
 
+type Option struct {
+	Action      string
+	Description string
+	Prefix      string
+}
+
 func (board *MessageBoard) ListCommands() {
-	// todo: add more commands
-	commands := `[lightgrey::b]Commands[::-]
-	[grey]/[::-][white::b]help[::-] [lightgrey]Shows this commands list.[::-]
-	`
-	arrows := `[lightgrey::b]Commands[::-]
-	[grey]UpArrow[::-] [lightgrey]When input focused will focus message list.[::-]
-	[grey]ESC[::-] [lightgrey]Will exit message list focus.[::-]
-	`
-	if _, err := fmt.Fprint(board.View, commands, "\n", arrows, "\n"); err != nil {
+	commandsOptionsList := []Option{{
+		Prefix:      "/",
+		Action:      "help",
+		Description: "Shows this commands list.",
+	}, {
+		Action:      "disconnect",
+		Description: "Disconnects you and exists the program.",
+		Prefix:      "/",
+	}}
+
+	arrowsOptionsList := []Option{
+		{Prefix: "UP ARROW", Description: "When input is focused, message list is focused."},
+		{Prefix: "ESC", Description: "Exit message list focus."},
+	}
+
+	arrows := BuildOptionsList("Keys", arrowsOptionsList)
+	commands := BuildOptionsList("Commands", commandsOptionsList)
+	if _, err := fmt.Fprint(board.View, commands, "\n", arrows); err != nil {
 		board.Connection.LogError(fmt.Errorf("failed to list commands: %s", err))
 	}
 }
 
+func BuildOptionsList(title string, optionsList []Option) string {
+	result := fmt.Sprintf("[lightgrey::b]%s[::-] \n", title)
+	for _, option := range optionsList {
+		optionText := fmt.Sprintf("  [blue]%s[::-][white::b]%s[::-] [lightgrey]%s[::-]\n", option.Prefix, option.Action, option.Description)
+		result += optionText
+	}
+	return result
+}
+
 func (board *MessageBoard) GenerateMessageLog(message *server.Message) []interface{} {
 	date := message.CreatedAt.Format("Jan 2 15:04:05")
-	date = fmt.Sprintf("[grey]%s[::-]", date)
+	info := fmt.Sprintf("[grey]%s[::-]", date)
 
 	authorName := message.AuthorName
 	if message.AuthorID == board.Connection.AssignID {
 		authorName = fmt.Sprintf("[blue::b]%s[::-]", authorName)
 	}
-	return []interface{}{authorName, " ", date, "\n", "  [white]", message.Content, "\n\n"}
+	return []interface{}{authorName, " ", info, "\n", "  [white]", message.Content, "[::-]\n\n"}
 }

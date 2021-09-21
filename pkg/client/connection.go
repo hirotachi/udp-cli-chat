@@ -6,6 +6,7 @@ import (
 	"github.com/hirotachi/udp-cli-chat/pkg/server"
 	"github.com/hirotachi/udp-cli-chat/pkg/utils"
 	"net"
+	"os"
 )
 
 type Connection struct {
@@ -147,4 +148,11 @@ func (c *Connection) AddMessageToHistory(data []byte) {
 		close(c.UDPMessagesQueue)
 		close(c.HistoryChan)
 	}
+}
+
+func (c *Connection) Disconnect() {
+	if err := utils.WriteToUDPConn(c.conn, utils.DisconnectCommand, c.AssignID); err != nil {
+		return
+	}
+	os.Exit(1)
 }

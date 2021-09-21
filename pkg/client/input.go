@@ -14,7 +14,7 @@ type InputSection struct {
 
 func NewInputSection(messageBoard *MessageBoard) *InputSection {
 	inputView := tview.NewInputField()
-	inputView.SetPlaceholder("Send a message or input a command ot /help to list commands").
+	inputView.SetPlaceholder(`Send a message or input a command  ("/help" to list all commands)`).
 		SetPlaceholderTextColor(tcell.ColorDeepSkyBlue)
 	inputView.SetLabel(">").SetLabelColor(tcell.ColorDeepSkyBlue).SetLabelWidth(2)
 	inputView.SetFieldTextColor(tcell.ColorWhite).SetFieldBackgroundColor(tcell.ColorGrey)

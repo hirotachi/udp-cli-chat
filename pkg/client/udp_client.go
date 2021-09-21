@@ -46,7 +46,6 @@ func NewUDPClient() (*tview.Application, error) {
 		}
 		return event
 	})
-	messageBoard.Focus = focus
 	inputSection.Focus = focus
 	return app, nil
 }
