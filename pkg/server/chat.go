@@ -185,10 +185,11 @@ func (chat *Chat) ListenToChannels() {
 			})
 		case msg := <-chat.MessageChan:
 			forEachClient(true, func(client *Client) {
-				if client.ID != msg.AuthorID { // hide other clients ids from client
-					msg.AuthorID = ""
+				message := msg
+				if client.ID != message.AuthorID { // hide other clients ids from client
+					message.AuthorID = ""
 				}
-				client.MessageChan <- &msg
+				client.MessageChan <- &message
 			})
 		}
 	}
@@ -315,7 +316,7 @@ func (chat *Chat) SaveMessageToRedis(message *Message) error {
 		log.Println("failed to fetch history length from redis: ", err)
 	}
 
-	if historyLength == int64(historyLength) { // limit history log on redis
+	if historyLength == int64(chat.HistoryLimit) { // limit history log on redis
 		if err := chat.RedisClient.LTrim(ctx, utils.RedisHistoryKey, 1, -1).Err(); err != nil {
 			return fmt.Errorf("failed to limit redis history to 20 entries: %s", err)
 		}
